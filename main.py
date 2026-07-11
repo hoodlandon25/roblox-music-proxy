@@ -11,7 +11,6 @@ class SearchRequest(BaseModel):
 
 @app.post("/search")
 async def search_songs(request: SearchRequest):
-    # Use a standard GET request to avoid Cloudflare AJAX/POST blocks
     url = "https://robloxsong.com/search"
     params = {"q": request.query}
     
@@ -25,13 +24,23 @@ async def search_songs(request: SearchRequest):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url, params=params, headers=headers, timeout=10.0)
+            html_content = response.text
+            
+            # Check if Cloudflare is serving a challenge page instead of the site
+            if "cloudflare" in html_content.lower() or "just a moment" in html_content.lower() or "checking your browser" in html_content.lower():
+                return {
+                    "success": False,
+                    "error": "Cloudflare security block detected. Render's IP is blocked.",
+                    "songs": []
+                }
+                
             if response.status_code != 200:
                 return {
                     "success": False,
-                    "error": f"Cloudflare/Website blocked request (Status {response.status_code})",
+                    "error": f"Website blocked request (Status {response.status_code})",
                     "songs": []
                 }
-            html_content = response.text
+                
         except httpx.RequestError as exc:
             return {
                 "success": False,
